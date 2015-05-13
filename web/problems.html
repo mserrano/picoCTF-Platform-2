@@ -18,7 +18,9 @@ startup_functions:
         reviewData: reviewData,
         renderProblemReview: renderProblemReview,
         renderProblemSubmit: renderProblemSubmit,
-        sanitizeMetricName: sanitizeMetricName
+        sanitizeMetricName: sanitizeMetricName,
+        renderWriteupList: renderWriteupList,
+        renderSubmitWriteup: renderSubmitWriteup
         }) %>
         <% }); %>
     </div>
@@ -27,19 +29,35 @@ startup_functions:
 <script type="text/template" id="problem-template">
     <%
     var alreadyReviewed = $.inArray(problem.pid, reviewData) !== -1;
+
+    var status = "";
+    if (problem.solved) {
+        status = "Solved";
+    } else {
+        if (problem.grader_count > 1) {
+            status = "Solved (" + problem.solve_count + "/" + problem.grader_count + ")";
+        } else {
+            status = "Unsolved";
+        }
+    }
+
     var panel = {
     className: problem.solved ? "solved" : "",
     collapseClass: problem.solved ? "" : "in",
     title: problem.name + " - " + problem.score,
-    status: problem.solved ? "Solved" : "Unsolved"
+    status: status
     };
 
     var pill = {
     solveId: problem.pid + "solve",
     reviewId: problem.pid + "review",
     hintId: problem.pid + "hint",
+    writeupId: problem.pid + "writeup",
+    writeupFormId: problem.pid + "writeupform",
     solveClassName: problem.solved ? "disabled" : "active",
-    reviewClassName: problem.solved ? "active" : ""
+    reviewClassName: problem.solved ? "active" : "",
+    writeupClassName: problem.solved ? "" : "disabled",
+    submitWriteupClassName: problem.solved ? "" : "disabled"
     };
     %>
 
@@ -60,6 +78,10 @@ startup_functions:
                     </li>
                     <li class="<%= pill.reviewClassName %>"><a href="#<%= pill.reviewId %>" data-toggle="tab">Review</a>
                     </li>
+                    <li class="<%= pill.writeupClassName %>"><a href="#<%= pill.writeupId %>" data-toggle="tab">Writeups</a>
+                    </li>
+                    <li class="<%= pill.submitWriteupClassName %>"><a href="#<%= pill.writeupFormId %>" data-toggle="tab">Submit Writeup</a>
+                    </li>
                 </ul>
                 <div class="tab-content">
                     <div class="tab-pane <%= pill.solveClassName %>" id="<%= pill.solveId %>">
@@ -79,6 +101,16 @@ startup_functions:
                             alreadyReviewed: alreadyReviewed,
                             sanitizeMetricName: sanitizeMetricName
                             }) %>
+                        </div>
+                    </div>
+                    <div class="tab-pane <%= pill.writeupClassName %>" id="<%= pill.writeupId %>">
+                        <div class="panel-body">
+                            <%= renderWriteupList({writeups: problem.writeups, problem:problem}) %>
+                        </div>
+                    </div>
+                    <div class="tab-pane <%= pill.submitWriteupClassName %>" id="<%= pill.writeupFormId %>">
+                        <div class="panel-body">
+                            <%= renderSubmitWriteup({problem:problem}) %>
                         </div>
                     </div>
                 </div>
@@ -109,9 +141,9 @@ startup_functions:
     <div class="row">
         <form class="problem-submit">
             <div class="input-group input-group-sm">
-        <span class="input-group-btn">
-          <button class="btn btn-primary" type="submit">Submit!</button>
-        </span>
+                <span class="input-group-btn">
+                    <button class="btn btn-primary" type="submit">Submit!</button>
+                </span>
                 <input type="text" data-pid="<%- problem.pid %>" class="form-control">
             </div>
         </form>
@@ -130,6 +162,70 @@ startup_functions:
             </td>
         </tr>
     </table>
+</script>
+
+<script type="text/template" id="problem-writeup-list-template">
+    <div class="row">
+        <% _.each(writeups, function(writeup) { %>
+            <div class="row">
+                <div class="col-md-1">
+                    <center><span class="glyphicon upvote-span glyphicon-chevron-up" data-wid="<%= writeup.wid %>"></span></center>
+                </div>
+                <div class="col-md-11">&nbsp;</div>
+            </div>
+            <div class="row">
+                <div class="col-md-1">
+                    <center><div id="<%= writeup.wid %>-votecount"><%= writeup.voteCount %></div></center>
+                </div>
+                <div class="col-md-11">
+                    <a href="<%= writeup.url %>"><%= writeup.title %></a> <small>by <%= writeup.author %></small>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-1">
+                    <center><span class="glyphicon downvote-span glyphicon-chevron-down" data-wid="<%= writeup.wid %>"></span></a></center>
+                </div>
+                <div class="col-md-11">&nbsp;</div>
+            </div>
+        <% }); %>
+        <% if (writeups.length == 0) { %>
+            <p>There are no writeups currently available for this problem! If you&#8217;ve written one,
+            consider submitting it at the tab above!</p>
+        <% } else { %>
+            <small>Please remember that votes may take a few seconds to be permanently reflected.</small>
+        <% } %>
+    </div>
+</script>
+
+<script type="text/template" id="problem-writeup-form-template">
+    <div class="row">
+        <form class="writeup-submit form-horizontal" data-pid="<%- problem.pid %>">
+            <div class="form-group">
+                <label for="title" class="col-sm-2 control-label">Title</label>
+                <div class="col-sm-10">
+                    <input type="text" class="form-control" name="title">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="url" class="col-sm-2 control-label">URL</label>
+                <div class="col-sm-10">
+                    <input type="text" class="form-control" name="url">
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="col-sm-offset-2 col-sm-10">
+                    <small>Don&#8217;t have a place to host your writeup? Consider using a <a href="https://www.gitbook.com/">GitBook</a>
+                    and <a href="https://github.com/">GitHub</a>! Note that it may take a few seconds for your writeup
+                    to be visible.</small>
+                </div>
+            </div>
+            <div class="form-group">
+                <div class="col-sm-offset-2 col-sm-10">
+                    <button type="submit" class="btn btn-primary">Submit!</button>
+                </div>
+            </div>
+        </form>
+    </div>
 </script>
 
 <script type="text/template" id="problem-review-template">

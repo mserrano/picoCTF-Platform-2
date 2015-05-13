@@ -18,6 +18,7 @@ import api.utilities
 import api.autogen
 import api.autogen_tools
 import api.problem_feedback
+import api.writeups
 
 # MUST BE LAST
 import api.config

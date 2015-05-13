@@ -2,6 +2,8 @@ renderProblemList = _.template($("#problem-list-template").remove().text())
 renderProblem = _.template($("#problem-template").remove().text())
 renderProblemSubmit = _.template($("#problem-submit-template").remove().text())
 renderProblemReview = _.template($("#problem-review-template").remove().text())
+renderWriteupList = _.template($("#problem-writeup-list-template").remove().text())
+renderSubmitWriteup = _.template($("#problem-writeup-form-template").remove().text())
 renderAchievementMessage = _.template($("#achievement-message-template").remove().text())
 
 @ratingMetrics = ["Difficulty", "Enjoyment", "Educational Value"]
@@ -23,6 +25,15 @@ constructAchievementCallbackChainHelper = (achievements, index) ->
 constructAchievementCallbackChain = (achievements) ->
   constructAchievementCallbackChainHelper achievements, achievements.length-1
 
+addWriteup = (e) ->
+  e.preventDefault()
+  serialized = $(e.target).serializeObject()
+  serialized.pid = $(e.target).data("pid")
+  apiCall "POST", "/api/writeups/submit_writeup", serialized
+  .done (data) ->
+    $.notify data, "error"
+    loadProblems()
+
 submitProblem = (e) ->
   e.preventDefault()
   input = $(e.target).find("input")
@@ -31,9 +42,10 @@ submitProblem = (e) ->
     if data['status'] is 1
       ga('send', 'event', 'Problem', 'Solve', 'Basic')
       loadProblems()
-      setTimeout( ->
-        $("div[data-target='#" + input.data("pid") + "']").click()
-      , 100)
+      if data['data']['solved'] is 1
+        setTimeout( ->
+          $("div[data-target='#" + input.data("pid") + "']").click()
+        , 100)
     else
       ga('send', 'event', 'Problem', 'Wrong', 'Basic')
     apiNotify data
@@ -84,6 +96,18 @@ toggleHint = (e) ->
   apiCall "GET", "/api/problems/hint", {"pid": pid, "source": "basic"}
   #$("#"+pid+"-hint").toggle("fast")
 
+upvoteWriteup = (e) ->
+  wid = $(e.target).data("wid")
+  apiCall "POST", "/api/writeups/upvote", {wid: wid}
+  .done (data) ->
+    $("#"+wid+"-votecount").text(data)
+
+downvoteWriteup = (e) ->
+  wid = $(e.target).data("wid")
+  apiCall "POST", "/api/writeups/downvote", {wid: wid}
+  .done (data) ->
+    $("#"+wid+"-votecount").text(data)
+
 loadProblems = ->
   apiCall "GET", "/api/problems"
   .done (data) ->
@@ -91,9 +115,9 @@ loadProblems = ->
       when 0
         apiNotify(data)
       when 1
-      	# We want the score to be level with the title, but the title
-	# is defined in a template. This solution is therefore a bit
-	# of a hack.
+        # We want the score to be level with the title, but the title
+        # is defined in a template. This solution is therefore a bit
+        # of a hack.
         addScoreToTitle("#title")
         apiCall "GET", "/api/problems/feedback/reviewed", {}
         .done (reviewData) ->
@@ -103,7 +127,9 @@ loadProblems = ->
             renderProblem: renderProblem,
             renderProblemSubmit: renderProblemSubmit,
             renderProblemReview: renderProblemReview,
-            sanitizeMetricName: sanitizeMetricName
+            sanitizeMetricName: sanitizeMetricName,
+            renderWriteupList: renderWriteupList,
+            renderSubmitWriteup: renderSubmitWriteup
           })
 
           $( ".time-slider" ).slider {
@@ -118,15 +144,17 @@ loadProblems = ->
           $( ".time-slider" ).each (x) ->
             $("#" + $(this).data("label-target")).html(window.timeValues[4]);
 
-          #Should solved problem descriptions still be able to be viewed?
-          #$("li.disabled>a").removeAttr "href"
-
           $(".problem-hint").hide()
           $(".problem-submit").on "submit", submitProblem
           $(".info-span").on "click", toggleHint
           $(".hint-tab-button").on "click", toggleHint
 
           $(".problem-review-form").on "submit", addProblemReview
+
+          $(".writeup-submit").on "submit", addWriteup
+
+          $(".upvote-span").on "click", upvoteWriteup
+          $(".downvote-span").on "click", downvoteWriteup
 
 addScoreToTitle = (selector) ->
         apiCall "GET", "/api/team/score", {}

@@ -5,6 +5,7 @@
   $.ajax {url: url, type: type, data: data, cache: false}
   .fail (jqXHR, text) ->
     ga('send', 'event', 'Error', 'APIOffline', url)
+    $.notify url, "error"
     $.notify "The picoCTF server is currently down. We will work to fix this error right away.", "error"
 
 @redirectIfNotLoggedIn = ->
@@ -59,31 +60,31 @@ getStyle = (data) ->
     setTimeout (->
         window.location = redirect
       ), 1000
-    
+
 @numericalSort = (data) ->
   data.sort (a, b) ->
     return (b - a)
 
-@confirmDialog = (message, title, yesButton, noButton, yesEvent, noEvent) ->    
+@confirmDialog = (message, title, yesButton, noButton, yesEvent, noEvent) ->
     renderDialogModal = _.template($("#modal-template").html())
     dialog_content = renderDialogModal({message: message, title: title, yesButton: yesButton, noButton: noButton, submitButton: ""})
-    $("#modal-holder").html dialog_content    
-    $("#confirm-modal").modal {backdrop: "static", keyboard: false} 
+    $("#modal-holder").html dialog_content
+    $("#confirm-modal").modal {backdrop: "static", keyboard: false}
     .one "click", "#modal-yes-button", yesEvent
     .one "click", "#modal-no-button", noEvent
 
-@messageDialog = (message, title, button, event) ->    
+@messageDialog = (message, title, button, event) ->
     renderDialogModal = _.template($("#modal-template").html())
     dialog_content = renderDialogModal({message: message, title: title, yesButton: button, noButton: "", submitButton: ""})
     $("#modal-holder").html dialog_content
-    $("#confirm-modal").modal {backdrop: "static", keyboard: false} 
+    $("#confirm-modal").modal {backdrop: "static", keyboard: false}
     .one "click", "#modal-yes-button", event
-    
-@formDialog = (message, title, button, defaultFocus, event) ->    
+
+@formDialog = (message, title, button, defaultFocus, event) ->
     renderDialogModal = _.template($("#modal-template").html())
     dialog_content = renderDialogModal({message: message, title: title, yesButton: "", noButton: "", submitButton: button})
-    $("#modal-holder").html dialog_content    
-    $("#confirm-modal").modal {backdrop: "static", keyboard: false} 
+    $("#modal-holder").html dialog_content
+    $("#confirm-modal").modal {backdrop: "static", keyboard: false}
     .on 'shown.bs.modal', () -> $("#" + defaultFocus).focus()
     .on "click", "#modal-submit-button", event
 
@@ -93,7 +94,7 @@ getStyle = (data) ->
 @logout = ->
   apiCall "GET", "/api/user/logout"
   .done (data) ->
-    switch data['status'] 
+    switch data['status']
       when 1
         ga('send', 'event', 'Authentication', 'LogOut', 'Success')
         document.location.href = "/"

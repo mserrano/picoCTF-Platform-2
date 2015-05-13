@@ -28,3 +28,12 @@ def index_mongo():
     db.cache.ensure_index("expireAt", expireAfterSeconds=0)
     db.cache.ensure_index("kwargs", name="kwargs")
     db.cache.ensure_index("args", name="args")
+
+    db.writeups.ensure_index("wid", unique=True, name="unique wid")
+    db.writeups.ensure_index("tid", name="writeup tids")
+    db.writeups.ensure_index("uid", name="writeup uids")
+    db.writeups.ensure_index("pid", name="writeup pids")
+
+    db.writeup_votes.ensure_index("wid", name="vote wids")
+    db.writeup_votes.ensure_index("uid", name="vote uids")
+    db.writeup_votes.ensure_index("tid", name="vote tids")

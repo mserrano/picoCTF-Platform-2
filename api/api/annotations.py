@@ -168,3 +168,23 @@ def block_after_competition(return_result):
                 return return_result
         return wrapper
     return decorator
+
+def block_before_end(return_result):
+    """
+    Wraps a routing function that should be blocked before & during the competition
+    """
+
+    def decorator(f):
+        """
+        Inner decorator
+        """
+
+        @wraps(f)
+        def wrapper(*args, **kwds):
+            if datetime.utcnow().timestamp() < api.config.end_time.timestamp():
+                return return_result
+            else:
+                return f(*args, **kwds)
+        return wrapper
+    return decorator
+

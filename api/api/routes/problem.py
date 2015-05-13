@@ -39,8 +39,10 @@ def submit_key_hook():
 
     result = api.problem.submit_key(tid, pid, key, uid, ip)
 
+    solved = 1 if pid in api.problem.get_solved_pids(tid) else 0
+
     if result['correct']:
-        return WebSuccess(result['message'], result['points'])
+        return WebSuccess(result['message'], {'points': result['points'], 'solved': solved})
     else:
         return WebError(result['message'], {'code': 'wrong'})
 

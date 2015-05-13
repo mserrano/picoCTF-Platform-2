@@ -12,6 +12,7 @@ from bson import json_util
 from os.path import join, isfile
 
 from api.annotations import log_action
+from api.writeups import get_writeups_for_problem
 
 grader_base_path = "./graders"
 
@@ -21,23 +22,29 @@ submission_schema = Schema({
     Required("pid"): check(
         ("This does not look like a valid pid.", [str, Length(max=100)])),
     Required("key"): check(
-        ("This does not look like a valid key.", [str, Length(max=100)]))
+        ("This does not look like a valid key.", [str, Length(max=100)])),
+    Required("points"): check(
+        ("Points must be a positive integer.", [int, Range(min=0)])),
+    Required("index"): check(
+        ("Index must be a positive integer.", [int, Range(min=0)]))
+})
+
+grader_schema = Schema({
+    Required("grader"): check(
+        ("The grader path must be a string.", [str])),
+    Required("score"): check(
+        ("Score must be a positive integer.", [int, Range(min=0)]))
 })
 
 problem_schema = Schema({
     Required("name"): check(
         ("The problem's display name must be a string.", [str])),
-    Required("score"): check(
-        ("Score must be a positive integer.", [int, Range(min=0)])),
     Required("category"): check(
         ("Category must be a string.", [str])),
-    Required("grader"): check(
-        ("The grader path must be a string.", [str])),
     Required("description"): check(
         ("The problem description must be a string.", [str])),
     Required("threshold"): check(
         ("Threshold must be a positive integer.", [int, Range(min=0)])),
-
     "disabled": check(
         ("A problem's disabled state is either True or False.", [
             lambda disabled: type(disabled) == bool])),
@@ -46,6 +53,11 @@ problem_schema = Schema({
             lambda autogen: type(autogen) == bool])),
     "related_problems": check(
         ("Related problems should be a list of related problems.", [list])),
+    "score": check(
+        ("You should not specify a score for a problem (specify it to its graders instead).",
+            [lambda _:False])),
+    "grader_count": check(
+        ("You should not specify a grader count for a problem.", [lambda _: False])),
     "pid": check(
         ("You should not specify a pid for a problem.", [lambda _: False])),
     "weightmap": check(
@@ -57,7 +69,9 @@ problem_schema = Schema({
     "generator": check(
         ("A generator must be a path.", [str])),
     "_id": check(
-        ("Your problems should not already have _ids.", [lambda id: False]))
+        ("Your problems should not already have _ids.", [lambda id: False])),
+    "graders": check(
+        ("graders must be a dict.", [dict]))
 })
 
 def get_all_categories(show_disabled=False):
@@ -96,8 +110,9 @@ def analyze_problems():
     errors = []
 
     for problem in problems:
-        if not isfile(join(grader_base_path, problem["grader"])):
-            errors.append(grader_missing_error.format(problem["name"], problem["grader"]))
+        for grader in problem['graders']:
+            if not isfile(join(grader_base_path, grader['grader'])):
+                errors.append(grader_missing_error.format(problem["name"], grader["grader"]))
 
         for pid in problem["weightmap"].keys():
             if safe_fail(get_problem, pid=pid) is None:
@@ -113,7 +128,7 @@ def insert_problem(problem):
         score: points awarded for completing the problem.
         category: problem's category
         description: description of the problem.
-        grader: path relative to grader_base_path
+        graders: list of dictionaries containing grader paths and scores.
         threshold: Amount of points necessary for a team to unlock this problem.
 
         Optional:
@@ -128,11 +143,19 @@ def insert_problem(problem):
     """
 
     db = api.common.get_conn()
+
     validate(problem_schema, problem)
 
+    problem["pid"] = api.common.hash(problem["name"])
     problem["disabled"] = problem.get("disabled", False)
 
-    problem["pid"] = api.common.hash(problem["name"])
+    score = 0
+    for grader in problem['graders']:
+        score += grader['score']
+        validate(grader_schema, grader)
+
+    problem['score'] = score
+    problem['grader_count'] = len(problem['graders'])
 
     weightmap = {}
 
@@ -210,8 +233,6 @@ def update_problem(pid, updated_problem):
     validate(problem_schema, problem)
     problem["pid"] = pid
 
-
-
     db.problems.update({"pid": pid}, problem)
     api.cache.fast_cache.clear()
 
@@ -250,21 +271,26 @@ def insert_problem_from_json(blob):
         raise InternalException("JSON blob does not appear to be a list of problems or a single problem.")
 
 @api.cache.memoize(timeout=60, fast=True)
-def get_grader(pid):
+def get_graders(pid):
     """
-    Returns the grader module for a given problem.
+    Returns the grader modules for a given problem.
 
     Args:
         pid: the problem id
     Returns:
-        The grader module
+        The grader modules as a list.
     """
 
-    try:
-        path = get_problem(pid=pid, show_disabled=True)["grader"]
-        return imp.load_source(path[:-3], join(grader_base_path, path))
-    except FileNotFoundError:
-        raise InternalException("Problem grader for {} is offline.".format(get_problem(pid=pid)['name']))
+    modules = []
+    prob = get_problem(pid=pid, show_disabled=True)
+    for grader in prob['graders']:
+        try:
+            path = grader["grader"]
+            mod = imp.load_source(path[:-3], join(grader_base_path, path))
+            modules.append((mod, grader['score']))
+        except FileNotFoundError:
+            raise InternalException("Problem grader for {} is offline.".format(prob['name']))
+    return modules
 
 def grade_problem(pid, key, tid=None):
     """
@@ -290,14 +316,24 @@ def grade_problem(pid, key, tid=None):
         return api.autogen.grade_problem_instance(pid, tid, key)
 
     problem = get_problem(pid=pid, show_disabled=True)
-    grader = get_grader(pid)
+    graders = get_graders(pid)
 
-    (correct, message) = grader.grade(tid, key)
+    correct, message = False, None
+    score = 0
+    idx = 0
+    for i in range(len(graders)):
+        grader = graders[i]
+        (correct, message) = grader[0].grade(tid, key)
+        if correct:
+            score = grader[1]
+            idx = i
+            break
 
     return {
         "correct": correct,
-        "points": problem["score"],
-        "message": message
+        "points": score,
+        "message": message,
+        "index": idx
     }
 
 @log_action
@@ -318,7 +354,7 @@ def submit_key(tid, pid, key, uid=None, ip=None):
     """
 
     db = api.common.get_conn()
-    validate(submission_schema, {"tid": tid, "pid": pid, "key": key})
+    validate(submission_schema, {"tid": tid, "pid": pid, "key": key, 'points': 0, 'index': 0})
 
     if pid not in get_unlocked_pids(tid):
         raise InternalException("You can't submit flags to problems you haven't unlocked.")
@@ -347,15 +383,25 @@ def submit_key(tid, pid, key, uid=None, ip=None):
         'pid': pid,
         'ip': ip,
         'key': key,
+        'index': result['index'],
+        'points': result['points'],
         'eligible': eligibility,
         'category': problem['category'],
         'correct': result['correct']
     }
 
-    if (key, pid) in [(submission["key"], submission["pid"]) for submission in  get_submissions(tid=tid)]:
+    subs = get_submissions(tid=tid)
+    if (key, pid) in [(submission["key"], submission["pid"]) for submission in subs]:
         exp = WebException("You or one of your teammates has already tried this solution.")
         exp.data = {'code': 'repeat'}
         raise exp
+
+    if submission['correct']:
+        idx = result['index']
+        if (pid, idx) in [(sub['pid'], sub['index']) for sub in subs]:
+            exp = WebException("You have already solved this subpart!")
+            exp.data = {'code': 'solved'}
+            raise exp
 
     db.submissions.insert(submission)
 
@@ -527,7 +573,6 @@ def reevaluate_all_submissions():
     for problem in get_all_problems(show_disabled=True):
         reevaluate_submissions_for_problem(problem["pid"])
 
-@api.cache.memoize(timeout=60, fast=True)
 def get_problem(pid=None, name=None, tid=None, show_disabled=False):
     """
     Gets a single problem.
@@ -563,6 +608,9 @@ def get_problem(pid=None, name=None, tid=None, show_disabled=False):
     if problem is None:
         raise SevereInternalException("Could not find problem! You gave " + str(match))
 
+    writeups = get_writeups_for_problem(pid)
+    problem['writeups'] = writeups
+
     return problem
 
 def get_all_problems(category=None, show_disabled=False):
@@ -587,7 +635,11 @@ def get_all_problems(category=None, show_disabled=False):
 
     return list(db.problems.find(match, {"_id":0}).sort('score', pymongo.ASCENDING))
 
-@api.cache.memoize()
+def get_solve_counts(tid=None, uid=None, category=None):
+    partially_solved_pids = [sub['pid'] for sub in get_submissions(tid=tid, uid=uid, category=category, correctness=True)]
+    counts = {pid: partially_solved_pids.count(pid) for pid in set(partially_solved_pids)}
+    return counts
+
 def get_solved_pids(tid=None, uid=None, category=None):
     """
     Gets the solved pids for a given team or user.
@@ -598,8 +650,13 @@ def get_solved_pids(tid=None, uid=None, category=None):
     Returns:
         List of solved problem ids
     """
-
-    return list(set([sub['pid'] for sub in get_submissions(tid=tid, uid=uid, category=category, correctness=True)]))
+    counts = get_solve_counts(tid, uid, category)
+    solved = []
+    for pid in counts:
+        prob = get_problem(pid)
+        if prob['grader_count'] == counts[pid]:
+            solved.append(pid)
+    return list(set(solved))
 
 def get_solved_problems(tid=None, uid=None, category=None):
     """
@@ -611,10 +668,8 @@ def get_solved_problems(tid=None, uid=None, category=None):
     Returns:
         List of solved problem dictionaries
     """
-
     return [get_problem(pid=pid) for pid in get_solved_pids(tid=tid, uid=uid, category=category)]
 
-@api.cache.memoize()
 def get_unlocked_pids(tid, category=None):
     """
     Gets the unlocked pids for a given team.
@@ -649,11 +704,15 @@ def get_unlocked_problems(tid, category=None):
     Returns:
         List of unlocked problem dictionaries
     """
-
-    solved = get_solved_problems(tid=tid)
+    counts = get_solve_counts(tid=tid)
+    solved = get_solved_pids(tid=tid)
     unlocked = [get_problem(pid=pid) for pid in get_unlocked_pids(tid, category=category)]
     for problem in unlocked:
         if api.autogen.is_autogen_problem(problem["pid"]):
             problem.update(api.autogen.get_problem_instance(problem["pid"], tid))
-        problem['solved'] = problem in solved
+        problem['solved'] = problem['pid'] in solved
+        if problem['pid'] in counts:
+            problem['solve_count'] = counts[problem['pid']]
+        else:
+            problem['solve_count'] = 0
     return unlocked

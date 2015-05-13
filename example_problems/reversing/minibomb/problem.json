@@ -1,0 +1,14 @@
+{"name": "minibomb",
+ "category": "Reversing",
+ "graders": [
+    {"grader": "reversing/minibomb/grader1.py", "score": 10},
+    {"grader": "reversing/minibomb/grader2.py", "score": 15},
+    {"grader": "reversing/minibomb/grader3.py", "score": 15},
+    {"grader": "reversing/minibomb/grader4.py", "score": 20},
+    {"grader": "reversing/minibomb/grader5.py", "score": 20},
+    {"grader": "reversing/minibomb/grader6.py", "score": 30}
+  ],
+ "description": "Can you defuse <a target=_blank href='/problem-static/reversing/minibomb/minibomb'>this bomb</a>?",
+ "threshold": 0,
+ "weightmap": {},
+ "hint": "You may want to objdump!"}

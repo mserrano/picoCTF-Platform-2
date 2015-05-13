@@ -343,17 +343,27 @@ def grade_problem_instance(pid, tid, key):
     n = get_instance_number(pid, tid)
     grader_problem_instance = GraderProblemInstance(pid, tid, n)
 
-    grader = api.problem.get_grader(pid)
+    graders = api.problem.get_graders(pid)
 
-    try:
-        correct, message = grader.grade(grader_problem_instance, key)
-    except Exception as e:
-        raise SevereInternalException("Grader for {} is throwing exceptions.\n{}".format(pid, str(e)))
-
+    correct, message = False, None
+    score = 0
+    idx = 0
+    for i in range(len(graders)):
+        grader = graders[i]
+        try:
+            (correct, message) = grader[0].grade(grader_problem_instance, key)
+        except Exception as e:
+            raise SevereInternalException("Grader for {} is throwing exceptions.\n{}".format(pid, str(e)))
+        if correct:
+            score = grader[1]
+            idx = i
+            break
+    
     return {
         "correct": correct,
-        "points": problem["score"],
-        "message": message
+        "message": message,
+        "index": idx,
+        "points": score
     }
 
 class GraderProblemInstance(object):

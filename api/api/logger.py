@@ -68,6 +68,17 @@ class StatsHandler(logging.StreamHandler):
                 "pid": pid,
                 "feedback": feedback
             },
+        "api.writeups.add_writeup":
+            lambda pid, uid, title, url, result=None: {
+                "pid": pid,
+                "title": title,
+                "url": url
+            },
+        "api.writeups.apply_vote":
+            lambda wid, direction, result=None: {
+                "wid": wid,
+                "direction": direction
+            },
         "api.user.update_password_request":
             lambda params, uid=None, check_current=False, result=None: {},
         "api.utilities.request_password_reset":

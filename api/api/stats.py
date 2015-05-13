@@ -21,9 +21,9 @@ def get_score(tid=None, uid=None):
     Returns:
         The users's or team's score
     """
-    score = sum([problem['score'] for problem in api.problem.get_solved_problems(tid=tid, uid=uid)])
+    subs = api.problem.get_submissions(tid=tid, uid=uid, category=None, correctness=True)
+    score = sum([sub['points'] for sub in subs])
     return score
-
 
 def get_team_review_count(tid=None, uid=None):
     if uid is not None:
@@ -33,7 +33,6 @@ def get_team_review_count(tid=None, uid=None):
         for member in api.team.get_team_members(tid=tid):
             count += len(api.problem_feedback.get_reviewed_pids(uid=member['uid']))
         return count
-
 
 def get_group_scores(gid=None, name=None):
     """
